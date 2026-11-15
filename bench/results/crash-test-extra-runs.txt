@@ -1,0 +1,33 @@
+# Extra crash-test runs made after the official 5 (bench/results/crash-test.txt) while
+# trying to reproduce the slow run 3 there. Same settings, final script with stall tracking.
+
+## Batch A (5 runs)
+machine: Apple M3 cores=8 RAM=16 GB, Postgres 14.17 (Homebrew), max_connections=100, node v24.20.0
+crash test: 50000 write-effect jobs (5-50 ms), 8 workers x 4 concurrency, visibility 5 s, SIGKILL every 1-3 s until drained
+
+run | kills | in-flight at kill | not done | lost jobs | jobs run >1 time | conflicts absorbed | jobs with a conflict (expected from DB) | reaped | effect rows | wall time | longest stretch with no progress
+1 | 27 | 95 | 0 | 0 | 98 | 93 | 93 (93) | 98 | 50000 | 52.09 s | 2.4 s at t=52 s
+2 | 25 | 91 | 0 | 0 | 88 | 84 | 84 (84) | 88 | 50000 | 51.23 s | 2.6 s at t=50 s
+3 | 29 | 102 | 0 | 0 | 102 | 98 | 98 (98) | 102 | 50000 | 50.63 s | 3.3 s at t=51 s
+4 | 25 | 86 | 0 | 0 | 86 | 84 | 84 (84) | 86 | 50000 | 51.48 s | 2.1 s at t=51 s
+5 | 24 | 85 | 0 | 0 | 88 | 84 | 84 (84) | 88 | 50000 | 51.59 s | 2.5 s at t=50 s
+
+all runs passed
+
+## Batch B (10 runs)
+machine: Apple M3 cores=8 RAM=16 GB, Postgres 14.17 (Homebrew), max_connections=100, node v24.20.0
+crash test: 50000 write-effect jobs (5-50 ms), 8 workers x 4 concurrency, visibility 5 s, SIGKILL every 1-3 s until drained
+
+run | kills | in-flight at kill | not done | lost jobs | jobs run >1 time | conflicts absorbed | jobs with a conflict (expected from DB) | reaped | effect rows | wall time | longest stretch with no progress
+1 | 28 | 98 | 0 | 0 | 102 | 100 | 100 (100) | 102 | 50000 | 52.91 s | 2.2 s at t=52 s
+2 | 24 | 88 | 0 | 0 | 92 | 87 | 87 (87) | 92 | 50000 | 51.24 s | 1.9 s at t=51 s
+3 | 25 | 91 | 0 | 0 | 92 | 91 | 91 (91) | 92 | 50000 | 51.94 s | 2.6 s at t=51 s
+4 | 27 | 98 | 0 | 0 | 99 | 98 | 97 (97) | 100 | 50000 | 51.76 s | 2.2 s at t=52 s
+5 | 25 | 89 | 0 | 0 | 91 | 88 | 88 (88) | 91 | 50000 | 51.32 s | 2.6 s at t=50 s
+6 | 23 | 82 | 0 | 0 | 80 | 78 | 78 (78) | 80 | 50000 | 51.47 s | 2.3 s at t=50 s
+7 | 24 | 84 | 0 | 0 | 87 | 82 | 82 (82) | 87 | 50000 | 50.27 s | 2.0 s at t=50 s
+8 | 26 | 91 | 0 | 0 | 88 | 82 | 82 (82) | 88 | 50000 | 53.89 s | 2.5 s at t=51 s
+9 | 25 | 87 | 0 | 0 | 91 | 88 | 88 (88) | 91 | 50000 | 51.21 s | 2.4 s at t=50 s
+10 | 23 | 82 | 0 | 0 | 82 | 81 | 81 (81) | 82 | 50000 | 51.18 s | 2.1 s at t=49 s
+
+all runs passed
