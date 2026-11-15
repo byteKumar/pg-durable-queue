@@ -4,6 +4,7 @@ import pg from 'pg';
 import { claimModeFromEnv, envInt } from './config.ts';
 import { createPool, type Pool } from './db.ts';
 import { defaultHandlers, type Handler } from './handlers/index.ts';
+import { Metrics, serveMetrics } from './metrics.ts';
 import {
   channelFor,
   claim,
@@ -39,6 +40,7 @@ function errorMessage(err: unknown): string {
 export class Worker {
   readonly id: string;
   readonly pool: Pool;
+  readonly metrics = new Metrics();
 
   private readonly connectionString: string | undefined;
   private readonly queue: string;
@@ -212,6 +214,13 @@ export class Worker {
   }
 
   private async runJob(job: Job): Promise<void> {
+    // Wait time is measured once, on the first claim; both timestamps come from Postgres.
+    if (job.attempts === 1 && job.started_at) {
+      const waitSeconds = (job.started_at.getTime() - job.created_at.getTime()) / 1000;
+      this.metrics.jobWait.observe({ queue: job.queue }, waitSeconds);
+    }
+    const stopTimer = this.metrics.jobDuration.startTimer({ queue: job.queue, type: job.type });
+
     let finished = false;
     const beat = setInterval(() => {
       heartbeat(this.pool, job.id, this.id, this.visibilityMs).then(
@@ -232,19 +241,26 @@ export class Worker {
     } finally {
       finished = true;
       clearInterval(beat);
+      stopTimer();
     }
 
     // Recording the result is separate from running the handler, so a database error here
     // is never mistaken for a handler failure.
     try {
       if (!failure) {
-        if (!(await complete(this.pool, job.id, this.id))) {
+        if (await complete(this.pool, job.id, this.id)) {
+          this.metrics.jobsTotal.inc({ queue: job.queue, result: 'done' });
+        } else {
           this.log(`job ${job.id}: finished after losing its lock; it will run again`);
         }
       } else {
         const result = await fail(this.pool, job, this.id, errorMessage(failure.error), this.backoff);
-        if (!result) this.log(`job ${job.id}: failed after losing its lock`);
-        else if (result.status === 'dead') {
+        if (!result) {
+          this.log(`job ${job.id}: failed after losing its lock`);
+        } else if (result.status === 'queued') {
+          this.metrics.jobsTotal.inc({ queue: job.queue, result: 'retried' });
+        } else {
+          this.metrics.jobsTotal.inc({ queue: job.queue, result: 'dead' });
           this.log(`job ${job.id}: dead after ${job.attempts} attempts: ${errorMessage(failure.error)}`);
         }
       }
@@ -261,7 +277,10 @@ export class Worker {
     this.reaping = true;
     try {
       const ids = await reap(this.pool);
-      if (ids.length > 0) this.log(`reaper re-queued ${ids.length} job(s): ${ids.join(', ')}`);
+      if (ids.length > 0) {
+        this.metrics.reapedJobs.inc(ids.length);
+        this.log(`reaper re-queued ${ids.length} job(s): ${ids.join(', ')}`);
+      }
     } catch (err) {
       this.log(`reaper failed: ${errorMessage(err)}`);
     } finally {
@@ -294,4 +313,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   process.on('SIGINT', () => onSignal('SIGINT'));
 
   await worker.start();
+
+  // Optional: expose this worker's metrics for Prometheus (docker-compose sets it).
+  const metricsPort = process.env.METRICS_PORT;
+  if (metricsPort) serveMetrics(worker.metrics, envInt('METRICS_PORT', 9100)).unref();
 }
