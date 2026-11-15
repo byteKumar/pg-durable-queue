@@ -185,3 +185,40 @@ export async function fail(
   if (rowCount !== 1) return null;
   return { status: willRetry ? 'queued' : 'dead', backoffMs: delay };
 }
+
+// Extends the lock of a job this worker is still running. Returns false if the lock was
+// lost, e.g. the reaper already took the job back.
+export async function heartbeat(
+  pool: Pool,
+  jobId: number,
+  workerId: string,
+  visibilityMs: number,
+): Promise<boolean> {
+  const { rowCount } = await pool.query(
+    `UPDATE jobs SET locked_until = now() + $3::interval
+     WHERE id = $1 AND status = 'running' AND locked_by = $2`,
+    [jobId, workerId, `${visibilityMs} milliseconds`],
+  );
+  return rowCount === 1;
+}
+
+// Puts running jobs whose lock expired back in the queue: their worker died or stalled.
+// Safe to run from many workers at once: SKIP LOCKED means two reapers never fight over
+// the same row, and a job whose heartbeat is updating it right now is skipped too.
+// Returns the ids it re-queued.
+export async function reap(pool: Pool): Promise<number[]> {
+  const { rows } = await pool.query<{ id: number; queue: string }>(
+    `UPDATE jobs SET status = 'queued', locked_by = NULL, locked_until = NULL,
+            last_error = 'lock expired: worker died or stalled'
+     WHERE id IN (SELECT id FROM jobs
+                  WHERE status = 'running' AND locked_until < now()
+                  FOR UPDATE SKIP LOCKED)
+     RETURNING id, queue`,
+  );
+  // Wake idle workers on each affected queue (one notification per queue is enough).
+  const queues = [...new Set(rows.map((r) => r.queue))];
+  for (const queue of queues) {
+    await pool.query('SELECT pg_notify($1, $2)', [channelFor(queue), '']);
+  }
+  return rows.map((r) => r.id);
+}
