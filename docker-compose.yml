@@ -1,0 +1,90 @@
+# Full local stack: Postgres, the API, two workers, Prometheus and Grafana.
+#   docker compose up --build
+#   API          http://localhost:3000   (POST /jobs, GET /jobs/:id, /metrics, /health)
+#   Prometheus   http://localhost:9090
+#   Grafana      http://localhost:3001   (dashboard "pg-durable-queue", login admin/admin)
+
+x-app: &app
+  build: .
+  environment: &app-env
+    DATABASE_URL: postgres://pgq:pgq@postgres:5432/pgq
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+
+x-worker: &worker
+  <<: *app
+  command: ["node", "src/worker.ts"]
+  environment:
+    <<: *app-env
+    CONCURRENCY: "4"
+    VISIBILITY_MS: "30000"
+    METRICS_PORT: "9100"
+  # docker stop sends SIGTERM, then SIGKILL after the grace period. Give in-flight jobs the
+  # worker's full 30 s shutdown timeout before Docker kills it.
+  stop_grace_period: 35s
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: pgq
+      POSTGRES_PASSWORD: pgq
+      POSTGRES_DB: pgq
+    ports:
+      - "5433:5432" # 5433 on the host so it doesn't clash with a local Postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pgq -d pgq"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  # Runs the migrations once, then exits; the API and workers start after it succeeds.
+  migrate:
+    build: .
+    command: ["node", "src/migrate.ts"]
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *app
+    command: ["node", "src/api.ts"]
+    environment:
+      <<: *app-env
+      PORT: "3000"
+    ports:
+      - "3000:3000"
+
+  worker-1: *worker
+  worker-2: *worker
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    volumes:
+      - ./ops/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api
+      - worker-1
+      - worker-2
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./ops/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  pgdata:

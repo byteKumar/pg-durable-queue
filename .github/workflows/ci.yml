@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Typecheck and tests (Postgres 16)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pgq_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/pgq_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  compose:
+    name: docker-compose smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start the stack
+        run: docker compose up -d --build
+      - name: Enqueue a job through the API and wait for a worker to finish it
+        run: |
+          for i in $(seq 1 60); do
+            curl -sf localhost:3000/health && break
+            sleep 2
+          done
+          id=$(curl -sf -X POST localhost:3000/jobs -H 'content-type: application/json' \
+                 -d '{"type":"sleep","payload":{"ms":100}}' | jq -r .id)
+          echo "enqueued job $id"
+          for i in $(seq 1 30); do
+            status=$(curl -sf localhost:3000/jobs/$id | jq -r .status)
+            echo "status: $status"
+            [ "$status" = "done" ] && exit 0
+            sleep 1
+          done
+          exit 1
+      - name: Prometheus scrapes the API and both workers
+        run: |
+          for i in $(seq 1 30); do
+            health=$(curl -sf localhost:9090/api/v1/targets | jq -r '[.data.activeTargets[].health] | join(",")')
+            echo "targets: $health"
+            [ "$health" = "up,up,up" ] && exit 0
+            sleep 2
+          done
+          exit 1
+      - name: Grafana has the dashboard provisioned
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf localhost:3001/api/health >/dev/null && break
+            sleep 2
+          done
+          curl -sf -u admin:admin 'localhost:3001/api/search?query=pg-durable-queue' | tee /dev/stderr \
+            | jq -e 'length == 1'
+      - name: Logs
+        if: always()
+        run: docker compose logs --no-color
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v

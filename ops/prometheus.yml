@@ -1,0 +1,13 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  # queue_depth (read from Postgres at scrape time)
+  - job_name: api
+    static_configs:
+      - targets: ["api:3000"]
+
+  # jobs_total, job_wait_seconds, job_duration_seconds, reaped_jobs_total
+  - job_name: worker
+    static_configs:
+      - targets: ["worker-1:9100", "worker-2:9100"]
