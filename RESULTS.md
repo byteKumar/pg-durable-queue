@@ -158,10 +158,13 @@ cost is that workers wait in line for the same row; it never produces wrong resu
 
 ## CI
 
-GitHub Actions (tests against `postgres:16`, plus a docker-compose smoke test that enqueues a
-job through the API and checks Prometheus and Grafana) is set up in
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml), but **it hasn't run yet**. GitHub
-refuses to start the jobs because of a lock on the account ("your account is locked due to a
-billing issue"), although the account is on GitHub Free with no balance. A support ticket is
-open. Until CI runs, the docker-compose setup is untested: Docker isn't installed on the
-benchmark machine.
+GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) passes on commit
+`03b0849` ([run 43798039499](https://github.com/byteKumar/pg-durable-queue/actions/runs/43798039499),
+2026-11-16):
+
+- **Typecheck and tests (Postgres 16):** all 43 tests pass, 26 s.
+- **docker-compose smoke test:** the full stack starts, a job goes through the API and a worker,
+  Prometheus scrapes all three targets and Grafana has the dashboard, 61 s.
+
+The first runs were refused by GitHub because of an account billing lock, which has since been
+lifted. The stack was also checked by hand on a Mac with Colima.

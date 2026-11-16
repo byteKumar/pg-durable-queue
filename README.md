@@ -1,5 +1,7 @@
 # pg-durable-queue
 
+[![CI](https://github.com/byteKumar/pg-durable-queue/actions/workflows/ci.yml/badge.svg)](https://github.com/byteKumar/pg-durable-queue/actions/workflows/ci.yml)
+
 A durable background-job queue built only on PostgreSQL, written in TypeScript.
 
 A REST API enqueues jobs. Worker processes claim them with `FOR UPDATE SKIP LOCKED`, run them
@@ -140,8 +142,8 @@ docker compose up --build
 ```
 
 This starts Postgres (host port 5433), the API (3000), two workers, Prometheus (9090) and
-Grafana (3001, dashboard "pg-durable-queue", login admin/admin). CI includes a smoke test for
-this stack, but it hasn't run yet (see [CI status](#ci-status)).
+Grafana (3001, dashboard "pg-durable-queue", login admin/admin). CI runs a smoke test against
+this stack on every push.
 
 ## Build plan
 
@@ -156,18 +158,18 @@ this stack, but it hasn't run yet (see [CI status](#ci-status)).
   reaped jobs); Grafana dashboard; LISTEN/NOTIFY wake-ups with polling fallback.
 - [x] **Benchmarks.** Drain benchmark at 1/4/16 workers; k6 steady-state load test; `SKIP LOCKED`
   vs naive `FOR UPDATE`. Write-up in [RESULTS.md](RESULTS.md).
-- [ ] **CI verified.** The workflow and the docker-compose smoke test are written but haven't run
-  yet (see below).
+- [x] **CI verified.** Type check, tests against Postgres 16 and a docker-compose smoke test pass
+  on GitHub Actions.
 - [ ] **Later: deploy.** Terraform on AWS (ECS Fargate + RDS), blue-green deploys, autoscaling on
   queue depth, OpenTelemetry tracing.
 
 ## CI status
 
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the type check and tests against
-`postgres:16`, then starts the docker-compose stack and checks that a job goes through the API
-and a worker, that Prometheus scrapes all three targets, and that Grafana has the dashboard.
-GitHub hasn't started these jobs yet because of an account billing lock (support ticket open),
-so neither has passed in CI so far. The tests pass locally against Postgres 14.
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the type check and the 43 tests
+against `postgres:16`, then starts the docker-compose stack and checks that a job goes through
+the API and a worker, that Prometheus scrapes all three targets, and that Grafana has the
+dashboard. Both jobs pass on GitHub Actions
+([latest run](https://github.com/byteKumar/pg-durable-queue/actions/runs/43798039499)).
 
 ## Interview talking points
 
