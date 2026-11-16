@@ -11,7 +11,9 @@
     "migrate": "node src/migrate.ts",
     "typecheck": "tsc",
     "test": "vitest run",
-    "bench:crash": "node bench/crash-test.ts --runs 5"
+    "bench:crash": "node bench/crash-test.ts --runs 5",
+    "bench:drain": "node bench/drain.ts --repeat 3",
+    "bench:steady": "node bench/steady-state.ts --rates 200,500,1000,2000,4000,6000"
   },
   "license": "MIT",
   "dependencies": {

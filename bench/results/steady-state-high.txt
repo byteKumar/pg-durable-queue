@@ -1,0 +1,13 @@
+machine: Apple M3 cores=8 RAM=16 GB, Postgres 14.17 (Homebrew), max_connections=200, shared_buffers=128MB, node v24.20.0
+steady state: API (PORT 3100, LOG_LEVEL=warn, default pool of 10) + 8 workers x 4 concurrency (noop); k6 constant-arrival-rate POST /jobs for 60s per rate.
+k6, the API, the workers and Postgres all share this one machine. Warm-up first: 100 req/s for 10s (not reported).
+Latencies in ms. Wait = started_at - created_at; end-to-end = finished_at - created_at.
+
+rate req/s | requests | achieved req/s | enqueue p95/p99 | error % | dropped iterations | jobs done | wait p50/p95/p99 | end-to-end p50/p95/p99
+2000 | 118802 | 1979.9 | 77.27 / 265.03 | 0.000 | 1198 | 118802 | 0.2 / 4.9 / 19.0 | 0.5 / 6.1 / 22.7
+time="2026-11-15T22:13:04-05:00" level=warning msg="Insufficient VUs, reached 4000 active VUs and cannot initialize more" executor=constant-arrival-rate scenario=enqueue
+4000 | 143870 | 2345.1 | 2522.36 / 2737.83 | 0.000 | 96130 | 143870 | 19.1 / 363.2 / 672.9 | 22.2 / 367.4 / 692.6
+time="2026-11-15T22:14:01-05:00" level=warning msg="Insufficient VUs, reached 6000 active VUs and cannot initialize more" executor=constant-arrival-rate scenario=enqueue
+6000 | 102314 | 1343.8 | 10928.96 / 17856.12 | 0.000 | 257688 | 102314 | 6.7 / 62.9 / 109.5 | 8.0 / 69.9 / 112.6
+
+highest tested rate with wait p99 < 100 ms: 2000
