@@ -21,7 +21,7 @@ Measured on one 8-core laptop (Apple M3, 16 GB, PostgreSQL 14). Details in [RESU
 ## Architecture
 
 ```mermaid
-flowchart LR
+flowchart TB
     client([Client]) -- "POST /jobs" --> api["API<br/>(Fastify)"]
     api -- "INSERT ... ON CONFLICT DO NOTHING<br/>+ pg_notify, one statement" --> pg[("PostgreSQL<br/>jobs, job_effects")]
     pg -- "NOTIFY" --> workers
@@ -41,6 +41,7 @@ A job's life:
 
 ```mermaid
 stateDiagram-v2
+    direction LR
     [*] --> queued: enqueue (idempotency key)
     queued --> running: claim (SKIP LOCKED)
     running --> done: handler succeeds
